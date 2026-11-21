@@ -1,6 +1,7 @@
 """Retrieval modes used for the ablation: dense | bm25 | hybrid (RRF), each optionally reranked."""
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -42,6 +43,7 @@ class Retriever:
         self.client = QdrantClient(path=str(qdrant_path or settings.qdrant_path))
         self.dense = TextEmbedding(settings.dense_model, cache_dir=cache)
         self.sparse = SparseTextEmbedding(settings.sparse_model, cache_dir=cache)
+        self._lock = threading.Lock()  # embedded Qdrant is not safe for concurrent threads
         self._rerankers: dict[str, TextCrossEncoder] = {}  # loaded lazily: only if rerank=True
 
     def reranker(self, name: str | None = None) -> TextCrossEncoder:
@@ -85,7 +87,11 @@ class Retriever:
         ).points
 
     # ---- public API ----------------------------------------------------------------------
-    def search(self, query: str, *, mode: Mode = "hybrid", k: int = 5, rerank: bool = False,
+    def search(self, query: str, **kw) -> list[Hit]:
+        with self._lock:
+            return self._search(query, **kw)
+
+    def _search(self, query: str, *, mode: Mode = "hybrid", k: int = 5, rerank: bool = False,
                candidates: int = 30, rerank_model: str | None = None, doc_ids: list[str] | None = None,
                exclude_status: list[str] | None = None) -> list[Hit]:
         flt = self._filter(doc_ids, exclude_status)

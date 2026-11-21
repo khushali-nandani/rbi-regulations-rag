@@ -51,6 +51,16 @@ def _add_spend(usd: float) -> None:
     SPEND_FILE.write_text(json.dumps({"usd": total_spend() + usd}))
 
 
+class LLMStream:
+    """Iterate to receive text deltas; `.result` is set once the stream is exhausted."""
+
+    def __init__(self, gen_factory):
+        self._gen_factory, self.result = gen_factory, None
+
+    def __iter__(self):
+        yield from self._gen_factory(self)
+
+
 class LLM:
     def __init__(self, client=None):
         self._client = client
@@ -86,3 +96,38 @@ class LLM:
         f.write_text(json.dumps({k: v for k, v in res.__dict__.items() if k != "cached"}))
         _add_spend(res.cost_usd)
         return res
+
+    def stream(self, *, system: str, user: str, model: str, max_tokens: int = 700,
+               effort: str = "low") -> LLMStream:
+        key = hashlib.sha256(json.dumps([model, system, user, max_tokens, effort]).encode()).hexdigest()
+        f = CACHE_DIR / f"{key}.json"
+
+        def gen(handle: LLMStream):
+            if f.exists():  # cache hit: replay in small pieces so the client still sees a stream
+                res = LLMResult(**{**json.loads(f.read_text()), "cached": True})
+                for i in range(0, len(res.text), 24):
+                    yield res.text[i:i + 24]
+                handle.result = res
+                return
+            if total_spend() >= settings.max_spend_usd:
+                raise BudgetExceeded(f"spent ${total_spend():.2f} >= limit ${settings.max_spend_usd:.2f}")
+            with self.client.messages.stream(
+                model=model, max_tokens=max_tokens, system=system,
+                messages=[{"role": "user", "content": user}], output_config={"effort": effort},
+            ) as st:
+                for piece in st.text_stream:
+                    yield piece
+                final = st.get_final_message()
+            u = final.usage
+            in_tok = (u.input_tokens or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0) \
+                + (getattr(u, "cache_read_input_tokens", 0) or 0)
+            text = "".join(b.text for b in final.content if b.type == "text")
+            res = LLMResult(text=text, input_tokens=in_tok, output_tokens=u.output_tokens or 0,
+                            cost_usd=cost_of(model, in_tok, u.output_tokens or 0),
+                            stop_reason=final.stop_reason or "end_turn", model=model)
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps({k: v for k, v in res.__dict__.items() if k != "cached"}))
+            _add_spend(res.cost_usd)
+            handle.result = res
+
+        return LLMStream(gen)

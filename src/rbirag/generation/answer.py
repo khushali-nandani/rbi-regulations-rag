@@ -32,6 +32,7 @@ class Citation:
     pages: str
     status: str
     chunk_id: str
+    snippet: str = ""  # start of the cited passage, so a reader can verify the claim
 
 
 @dataclass
@@ -50,6 +51,17 @@ class Answer:
     dropped_hits: int = 0  # excerpts removed because they contained instructions
 
 
+@dataclass
+class _Ctx:
+    question: str
+    hits: list[Hit]
+    prompt: str
+    pii: dict
+    inj: bool
+    dropped: int
+    top_score: float
+
+
 def wants_history(question: str) -> bool:
     return bool(_HISTORICAL.search(question))
 
@@ -64,15 +76,18 @@ class RAG:
         self.guardrails = guardrails
         self.gate = settings.gate_min_dense_score if gate is None else gate
 
-    def answer(self, question: str) -> Answer:
+    # ---- shared pipeline steps ------------------------------------------------------------
+    def _prepare(self, question: str) -> tuple[Answer | None, _Ctx | None]:
+        """Guardrails -> out-of-domain gate -> retrieval. Returns a terminal Answer, or a context."""
         pii, inj = {}, False
         if self.guardrails:
             g = check_input(question)
             pii, inj = g.pii_types, g.injection
             if g.blocked:
-                msg = {"too_long": TOO_LONG_MESSAGE, "empty": "Please ask a question about RBI regulations."}.get(g.blocked, BLOCKED_MESSAGE)
+                msg = {"too_long": TOO_LONG_MESSAGE,
+                       "empty": "Please ask a question about RBI regulations."}.get(g.blocked, BLOCKED_MESSAGE)
                 return Answer(g.masked, msg, True, f"blocked_{g.blocked}", pii_types=pii,
-                              injection_detected=inj)
+                              injection_detected=inj), None
             question = g.clean  # from here on, only the masked/stripped question exists
         excl = None if wants_history(question) else ["repealed"]
         # Cheap out-of-domain gate: dense cosine of the best chunk (no LLM call needed).
@@ -80,7 +95,7 @@ class RAG:
         top_score = top[0].score if top else 0.0
         if top_score < self.gate:
             return Answer(question, ABSTAIN_MESSAGE, True, "out_of_domain", top_dense_score=top_score,
-                          pii_types=pii, injection_detected=inj)
+                          pii_types=pii, injection_detected=inj), None
 
         hits = self.retriever.search(question, mode=self.mode, k=self.k, exclude_status=excl)
         dropped = 0
@@ -89,11 +104,16 @@ class RAG:
             dropped, hits = len(hits) - len(kept), kept
             if not hits:
                 return Answer(question, ABSTAIN_MESSAGE, True, "no_safe_evidence", pii_types=pii,
-                              injection_detected=inj, dropped_hits=dropped)
-        prompt = build_user_prompt(question, hits)
-        res = self.llm.complete(system=SYSTEM, user=prompt, model=self.model)
-        base = dict(question=question, hits=hits, llm=res, top_dense_score=top_score,
-                    user_prompt=prompt, pii_types=pii, injection_detected=inj, dropped_hits=dropped)
+                              injection_detected=inj, dropped_hits=dropped), None
+        ctx = _Ctx(question, hits, build_user_prompt(question, hits), pii, inj, dropped, top_score)
+        return None, ctx
+
+    def _finalize(self, ctx: _Ctx, res: LLMResult) -> Answer:
+        """Verify the model output: abstain / refusal / leak checks, then citations."""
+        hits = ctx.hits
+        base = dict(question=ctx.question, hits=hits, llm=res, top_dense_score=ctx.top_score,
+                    user_prompt=ctx.prompt, pii_types=ctx.pii, injection_detected=ctx.inj,
+                    dropped_hits=ctx.dropped)
         if res.stop_reason == "refusal":
             return Answer(answer=ABSTAIN_MESSAGE, abstained=True, reason="refusal", **base)
         text = res.text.strip()
@@ -114,5 +134,30 @@ class RAG:
         for n in cited:
             h = hits[n - 1]
             pages = f"p.{h.page_start}" if h.page_start == h.page_end else f"pp.{h.page_start}-{h.page_end}"
-            cites.append(Citation(n, h.doc_id, h.doc_title, h.section_no, pages, h.status, h.chunk_id))
+            cites.append(Citation(n, h.doc_id, h.doc_title, h.section_no, pages, h.status, h.chunk_id,
+                                  h.text[:280]))
         return Answer(answer=text, abstained=False, reason="answered", citations=cites, **base)
+
+    # ---- public API -----------------------------------------------------------------------
+    def answer(self, question: str) -> Answer:
+        terminal, ctx = self._prepare(question)
+        if terminal:
+            return terminal
+        return self._finalize(ctx, self.llm.complete(system=SYSTEM, user=ctx.prompt, model=self.model))
+
+    def stream(self, question: str):
+        """Yield {"event", "data"} dicts: token* then one final Answer.
+
+        Tokens are provisional: citations are only verified once generation ends, so the client
+        must replace the streamed text with final.answer (it is the abstain message if verification
+        fails).
+        """
+        terminal, ctx = self._prepare(question)
+        if terminal:
+            yield {"event": "final", "data": terminal}
+            return
+        yield {"event": "meta", "data": {"retrieved": len(ctx.hits)}}
+        s = self.llm.stream(system=SYSTEM, user=ctx.prompt, model=self.model)
+        for piece in s:
+            yield {"event": "token", "data": piece}
+        yield {"event": "final", "data": self._finalize(ctx, s.result)}
