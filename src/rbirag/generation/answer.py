@@ -39,6 +39,7 @@ class Answer:
     hits: list[Hit] = field(default_factory=list)
     llm: LLMResult | None = None
     top_dense_score: float | None = None
+    user_prompt: str = ""  # exactly what was sent to the LLM (for PII / leak checks)
 
 
 def wants_history(question: str) -> bool:
@@ -47,10 +48,10 @@ def wants_history(question: str) -> bool:
 
 class RAG:
     def __init__(self, retriever: Retriever | None = None, llm: LLM | None = None, k: int = 5,
-                 gate: float | None = None, model: str | None = None):
+                 gate: float | None = None, model: str | None = None, mode: str = "hybrid"):
         self.retriever = retriever or Retriever()
         self.llm = llm or LLM()
-        self.k, self.model = k, model or settings.gen_model
+        self.k, self.model, self.mode = k, model or settings.gen_model, mode
         self.gate = settings.gate_min_dense_score if gate is None else gate
 
     def answer(self, question: str) -> Answer:
@@ -61,10 +62,11 @@ class RAG:
         if top_score < self.gate:
             return Answer(question, ABSTAIN_MESSAGE, True, "out_of_domain", top_dense_score=top_score)
 
-        hits = self.retriever.search(question, mode="hybrid", k=self.k, exclude_status=excl)
-        res = self.llm.complete(system=SYSTEM, user=build_user_prompt(question, hits),
-                                model=self.model)
-        base = dict(question=question, hits=hits, llm=res, top_dense_score=top_score)
+        hits = self.retriever.search(question, mode=self.mode, k=self.k, exclude_status=excl)
+        prompt = build_user_prompt(question, hits)
+        res = self.llm.complete(system=SYSTEM, user=prompt, model=self.model)
+        base = dict(question=question, hits=hits, llm=res, top_dense_score=top_score,
+                    user_prompt=prompt)
         if res.stop_reason == "refusal":
             return Answer(answer=ABSTAIN_MESSAGE, abstained=True, reason="refusal", **base)
         text = res.text.strip()
