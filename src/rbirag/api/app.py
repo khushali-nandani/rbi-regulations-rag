@@ -10,9 +10,10 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..config import settings
@@ -23,6 +24,7 @@ from .security import ApiKeys, RateLimiter, key_id
 
 log = logging.getLogger("rbirag.api")
 VERSION = "0.1.0"
+DEMO_PAGE = Path(__file__).with_name("static") / "demo.html"
 
 
 class AskRequest(BaseModel):
@@ -96,6 +98,11 @@ def create_app(rag: RAG | None = None, api_keys: str | None = None,
     @app.exception_handler(BudgetExceeded)
     async def _budget(request: Request, exc: BudgetExceeded):
         return JSONResponse({"detail": "Demo budget exhausted. Please try again later."}, status_code=503)
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def demo():
+        """Single-file demo UI. Public on purpose: the API key is still required to ask anything."""
+        return HTMLResponse(DEMO_PAGE.read_text(encoding="utf-8"))
 
     @app.get("/health", tags=["ops"])
     def health():

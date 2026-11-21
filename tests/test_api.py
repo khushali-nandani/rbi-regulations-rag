@@ -120,3 +120,11 @@ def test_rate_limiter_window_and_keys_unit():
     assert rl.check("a")[0]
     ks = ApiKeys(" a , b ,")
     assert ks.valid("a") and ks.valid("b") and not ks.valid("c") and not ks.valid(None)
+
+
+def test_demo_page_is_public_and_asks_via_the_stream_endpoint():
+    with client() as c:
+        r = c.get("/")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        assert "RBI Regulation RAG" in r.text and "/ask/stream" in r.text
+        assert "innerHTML" not in r.text  # model output is only ever inserted as text

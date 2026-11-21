@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBI Regulation RAG</title>
+<style>
+  :root { --bg:#fafaf9; --fg:#1c1917; --muted:#78716c; --card:#fff; --line:#e7e5e4; --accent:#1d4ed8;
+          --ok:#15803d; --warn:#b45309; --bad:#b91c1c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0c0a09; --fg:#f5f5f4; --muted:#a8a29e; --card:#1c1917; --line:#292524; --accent:#60a5fa;
+            --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 20px; font-size:.95rem; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:14px 0 4px; }
+  input, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+                    background:var(--card); color:var(--fg); font:inherit; }
+  textarea { min-height:84px; resize:vertical; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--fg);
+           border-radius:8px; padding:9px 14px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button:disabled { opacity:.55; cursor:default; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .examples button { font-size:.85rem; padding:6px 10px; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:20px; }
+  #answer { white-space:pre-wrap; } #answer.provisional { color:var(--muted); font-style:italic; }
+  .chip { display:inline-block; font-size:.75rem; padding:2px 8px; border-radius:999px; border:1px solid var(--line); margin:0 6px 6px 0; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .cite { border-top:1px solid var(--line); padding-top:10px; margin-top:10px; font-size:.9rem; }
+  .cite summary { cursor:pointer; } .cite blockquote { margin:8px 0 0; color:var(--muted); font-size:.85rem; }
+  .meta { color:var(--muted); font-size:.8rem; margin-top:12px; }
+  footer { color:var(--muted); font-size:.8rem; margin-top:28px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>RBI Regulation RAG</h1>
+  <p class="sub">Grounded answers with page-level citations over 7 public RBI documents. Abstains when the evidence is missing.</p>
+
+  <label for="key">API key</label>
+  <input id="key" type="password" autocomplete="off" placeholder="X-API-Key (kept in this tab only)">
+
+  <label for="q">Your question</label>
+  <textarea id="q" maxlength="1000" placeholder="e.g. What is the shortest cooling-off period for a digital loan?"></textarea>
+  <div class="row">
+    <button id="ask" class="primary">Ask</button>
+    <span class="examples" id="examples"></span>
+  </div>
+
+  <div id="out" class="card" hidden>
+    <div id="chips"></div>
+    <div id="answer"></div>
+    <div id="cites"></div>
+    <div class="meta" id="meta"></div>
+  </div>
+
+  <footer>Not legal or compliance advice. Always check the cited source on rbi.org.in. Streamed text is provisional until
+  the citations are verified; the final answer replaces it.</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const EXAMPLES = [
+  "What is the shortest cooling-off period for a digital loan?",
+  "Can a lender disburse my loan into the LSP's bank account?",
+  "What is the maximum compensation the RBI Ombudsman can award?",
+  "What is the repo rate today?",
+];
+EXAMPLES.forEach((t) => {
+  const b = document.createElement("button");
+  b.textContent = t.length > 34 ? t.slice(0, 32) + "..." : t; b.title = t;
+  b.onclick = () => { $("q").value = t; };
+  $("examples").appendChild(b);
+});
+try { $("key").value = sessionStorage.getItem("rag_key") || ""; } catch (e) {}
+
+const ERRORS = {
+  401: "That API key was not accepted.",
+  422: "Please enter a question (up to 1000 characters).",
+  429: "Rate limit reached. Please wait a minute and try again.",
+  503: "The demo budget is used up for now. Please try again later.",
+};
+
+function chip(text, cls) {
+  const s = document.createElement("span"); s.className = "chip " + (cls || ""); s.textContent = text; return s;
+}
+function clear(el) { while (el.firstChild) el.firstChild.remove(); }
+
+function render(final) {
+  $("answer").className = "";
+  $("answer").textContent = final.answer;
+  const chips = $("chips"); clear(chips);
+  chips.append(chip(final.abstained ? "abstained: " + final.reason : "grounded", final.abstained ? "warn" : "ok"));
+  const g = final.guardrails || {};
+  Object.keys(g.pii_masked || {}).forEach((k) => chips.append(chip("masked " + k, "ok")));
+  if (g.injection_detected) chips.append(chip("instructions in question ignored", "warn"));
+  const cites = $("cites"); clear(cites);
+  (final.citations || []).forEach((c) => {
+    const d = document.createElement("details"); d.className = "cite";
+    const s = document.createElement("summary");
+    s.textContent = "[" + c.n + "] " + c.doc_title + " | para " + c.section_no + " | " + c.pages +
+      (c.status === "repealed" ? " | REPEALED" : "");
+    const q = document.createElement("blockquote"); q.textContent = c.snippet + "...";
+    d.append(s, q); cites.append(d);
+  });
+  const u = final.usage;
+  $("meta").textContent = Math.round(final.latency_ms) + " ms" +
+    (u ? " | " + u.model + " | " + u.input_tokens + "/" + u.output_tokens + " tokens | $" + u.cost_usd : " | no model call") +
+    " | request " + final.request_id;
+}
+
+async function ask() {
+  const key = $("key").value.trim(), question = $("q").value.trim();
+  if (!key || !question) { alert("Enter an API key and a question."); return; }
+  try { sessionStorage.setItem("rag_key", key); } catch (e) {}
+  $("ask").disabled = true; $("out").hidden = false;
+  clear($("chips")); clear($("cites")); $("meta").textContent = "";
+  $("answer").className = "provisional"; $("answer").textContent = "Searching the documents...";
+  try {
+    const resp = await fetch("/ask/stream", { method: "POST",
+      headers: { "X-API-Key": key, "content-type": "application/json" }, body: JSON.stringify({ question }) });
+    if (!resp.ok) { $("answer").className = "bad"; $("answer").textContent = ERRORS[resp.status] || "Error " + resp.status; return; }
+    const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = "", text = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = (block.match(/^event: (.*)$/m) || [])[1], data = (block.match(/^data: (.*)$/m) || [])[1];
+        if (!ev || data === undefined) continue;
+        const payload = JSON.parse(data);
+        if (ev === "token") { text += payload; $("answer").className = "provisional"; $("answer").textContent = text; }
+        else if (ev === "final") render(payload);
+        else if (ev === "error") { $("answer").className = "bad"; $("answer").textContent = payload.detail; }
+      }
+    }
+  } catch (e) { $("answer").className = "bad"; $("answer").textContent = "Network error: " + e.message; }
+  finally { $("ask").disabled = false; }
+}
+$("ask").onclick = ask;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); });
+</script>
+</body>
+</html>
