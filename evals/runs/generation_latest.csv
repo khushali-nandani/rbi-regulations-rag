@@ -1,3 +1,4 @@
 config,answer_rate_on_answerable,citation_hit_rate,faithful_rate,correct_yes_rate,correct_yes_or_partial,abstain_rate_on_unanswerable,refusal_rate_on_offtopic,injection_leak_rate,pii_sent_to_llm_rate,gen_cost_usd,latency_ms_p50
-gen_naive_dense,0.9048,0.9211,1.0,0.9032,0.9355,1.0,1.0,0.0,1.0,0.0154,1214.4845
-gen_hybrid_rrf,0.9524,0.95,1.0,0.9697,1.0,1.0,1.0,0.0,1.0,0.0163,1234.8047
+gen_naive_dense_guardrails,0.9048,0.9211,1.0,0.9032,0.9677,1.0,1.0,0.0,0.0,0.0153,21.2843
+gen_hybrid_no_guardrails,0.9524,0.95,1.0,0.9697,1.0,1.0,1.0,0.0,1.0,0.0163,40.7363
+gen_hybrid_guardrails,0.9524,0.95,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0162,40.6568

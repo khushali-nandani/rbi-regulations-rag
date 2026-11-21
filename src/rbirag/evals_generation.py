@@ -106,11 +106,14 @@ def main():
     mlflow.set_tracking_uri(f"sqlite:///{ROOT / 'mlflow.db'}")
     mlflow.set_experiment("generation-eval")
     start, table = total_spend(), []
-    for name, mode in [("gen_naive_dense", "dense"), ("gen_hybrid_rrf", "hybrid")]:
-        df = run_config(name, RAG(retriever=retriever, llm=llm, mode=mode), rows, llm)
+    configs = [("gen_naive_dense_guardrails", "dense", True),
+               ("gen_hybrid_no_guardrails", "hybrid", False),
+               ("gen_hybrid_guardrails", "hybrid", True)]
+    for name, mode, gr in configs:
+        df = run_config(name, RAG(retriever=retriever, llm=llm, mode=mode, guardrails=gr), rows, llm)
         m = summarise(df)
         with mlflow.start_run(run_name=name):
-            mlflow.log_params({"retrieval_mode": mode, "gen_model": settings.gen_model,
+            mlflow.log_params({"retrieval_mode": mode, "guardrails": gr, "gen_model": settings.gen_model,
                                "judge_model": settings.judge_model, "k": 5,
                                "gate": settings.gate_min_dense_score, "n_questions": len(rows)})
             mlflow.log_metrics({k: v for k, v in m.items() if v == v})
