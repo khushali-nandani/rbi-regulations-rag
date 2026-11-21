@@ -33,10 +33,10 @@ class FakeRAG:
                       llm=LLMResult(text="x", input_tokens=100, output_tokens=20, cost_usd=0.0002,
                                     model="claude-haiku-5-5"), pii_types={"PAN": 1})
 
-    def answer(self, q):
+    def answer(self, q, trace=None):
         return self._ans(q)
 
-    def stream(self, q):
+    def stream(self, q, trace=None):
         a = self._ans(q)
         yield {"event": "meta", "data": {"retrieved": 5}}
         yield {"event": "token", "data": "Not less "}

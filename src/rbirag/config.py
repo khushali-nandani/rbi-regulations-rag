@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     gate_min_dense_score: float = 0.67  # below this the question is out of domain: skip the LLM
     api_keys: str = "dev-key-1"  # comma-separated; set real keys via the API_KEYS env var
     rate_limit_per_min: int = 10  # per API key
+    admin_api_keys: str = ""  # comma-separated; empty = trace endpoints disabled
+    trace_dir: Path = ROOT / "traces"
 
 
 settings = Settings()

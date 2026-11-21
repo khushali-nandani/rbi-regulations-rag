@@ -8,3 +8,4 @@ qdrant_local/
 data/delta/
 .cache/
 mlflow.db
+traces/
