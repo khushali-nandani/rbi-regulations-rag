@@ -1,0 +1,26 @@
+# Source-of-truth for the corpus. Download each PDF in a browser (RBI blocks curl)
+# and save it as data/raw/<id>.pdf
+as_of_date: 2026-11-21
+documents:
+  - id: digital_lending_2025
+    title: Reserve Bank of India (Digital Lending) Directions, 2025
+    effective_date: 2025-05-08
+    status: current
+    supersedes: digital_lending_2022
+    url: https://rbidocs.rbi.org.in/rdocs/notification/PDFs/36NT8C402BE7C2A349E0BFFF3C526668CD7A.PDF
+  - id: digital_lending_2022
+    title: Guidelines on Digital Lending (2022)
+    effective_date: 2022-09-02
+    status: repealed   # deliberate: used for version-conflict eval questions
+    superseded_by: digital_lending_2025
+    url: https://rbidocs.rbi.org.in/rdocs/notification/PDFs/GUIDELINESDIGITALLENDINGD5C35A71D8124A0E92AEB940A7D25BB3.PDF
+  - id: kyc_2016
+    title: Master Direction - Know Your Customer (KYC) Direction, 2016 (Updated Aug 14, 2025)
+    effective_date: 2016-02-25
+    status: current
+    url: https://www.rbi.org.in/commonman/Upload/English/Notification/PDFs/MD18KYCF6E92C82E1E1419D87323E3869BC9F13.pdf
+    landing_page: https://www.rbi.org.in/CommonPerson/english/scripts/notification.aspx?id=2607
+  # TODO (find landing pages on rbi.org.in, then add): Fair Practices Code, Outsourcing of
+  # Financial Services, Customer liability in unauthorised electronic transactions,
+  # Credit Card/Debit Card, Integrated Ombudsman Scheme. Note the Nov 28, 2025 consolidation
+  # into entity-wise Master Directions: check each doc's current name before adding.

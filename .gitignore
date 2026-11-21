@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.env
+data/raw/*.pdf
+data/processed/
+mlruns/
+qdrant_local/
+.DS_Store
