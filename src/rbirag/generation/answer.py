@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 
 from ..config import settings
 from ..guardrails import check_input, check_output
 from ..guardrails.injection import is_injection
+from ..observability.tracing import NULL_TRACE, Trace
 from ..retrieval.search import Hit, Retriever
 from .llm import LLM, LLMResult
 from .prompt import ABSTAIN_TOKEN, SYSTEM, build_user_prompt
@@ -77,11 +79,13 @@ class RAG:
         self.gate = settings.gate_min_dense_score if gate is None else gate
 
     # ---- shared pipeline steps ------------------------------------------------------------
-    def _prepare(self, question: str) -> tuple[Answer | None, _Ctx | None]:
+    def _prepare(self, question: str, trace: Trace) -> tuple[Answer | None, _Ctx | None]:
         """Guardrails -> out-of-domain gate -> retrieval. Returns a terminal Answer, or a context."""
         pii, inj = {}, False
         if self.guardrails:
-            g = check_input(question)
+            with trace.span("guardrails_input") as sp:
+                g = check_input(question)
+                sp.set(pii_types=g.pii_types, injection=g.injection, blocked=g.blocked)
             pii, inj = g.pii_types, g.injection
             if g.blocked:
                 msg = {"too_long": TOO_LONG_MESSAGE,
@@ -91,24 +95,40 @@ class RAG:
             question = g.clean  # from here on, only the masked/stripped question exists
         excl = None if wants_history(question) else ["repealed"]
         # Cheap out-of-domain gate: dense cosine of the best chunk (no LLM call needed).
-        top = self.retriever.search(question, mode="dense", k=1, exclude_status=excl)
-        top_score = top[0].score if top else 0.0
+        with trace.span("gate") as sp:
+            top = self.retriever.search(question, mode="dense", k=1, exclude_status=excl)
+            top_score = top[0].score if top else 0.0
+            sp.set(top_dense_score=round(top_score, 3), threshold=self.gate,
+                   passed=top_score >= self.gate)
         if top_score < self.gate:
             return Answer(question, ABSTAIN_MESSAGE, True, "out_of_domain", top_dense_score=top_score,
                           pii_types=pii, injection_detected=inj), None
 
-        hits = self.retriever.search(question, mode=self.mode, k=self.k, exclude_status=excl)
+        with trace.span("retrieval") as sp:
+            hits = self.retriever.search(question, mode=self.mode, k=self.k, exclude_status=excl)
+            sp.set(mode=self.mode, k=self.k, repealed_excluded=bool(excl), chunks=[
+                {"chunk_id": h.chunk_id, "doc_id": h.doc_id, "para": h.section_no,
+                 "pages": [h.page_start, h.page_end], "status": h.status, "score": round(h.score, 4)}
+                for h in hits])
         dropped = 0
         if self.guardrails:  # indirect injection: an excerpt must never carry instructions
-            kept = [h for h in hits if not is_injection(h.text)]
-            dropped, hits = len(hits) - len(kept), kept
+            with trace.span("guardrails_excerpts") as sp:
+                kept = [h for h in hits if not is_injection(h.text)]
+                dropped, hits = len(hits) - len(kept), kept
+                sp.set(dropped=dropped)
             if not hits:
                 return Answer(question, ABSTAIN_MESSAGE, True, "no_safe_evidence", pii_types=pii,
                               injection_detected=inj, dropped_hits=dropped), None
         ctx = _Ctx(question, hits, build_user_prompt(question, hits), pii, inj, dropped, top_score)
         return None, ctx
 
-    def _finalize(self, ctx: _Ctx, res: LLMResult) -> Answer:
+    def _finalize(self, ctx: _Ctx, res: LLMResult, trace: Trace) -> Answer:
+        with trace.span("verification") as sp:
+            a = self._verify(ctx, res)
+            sp.set(reason=a.reason, abstained=a.abstained, cited=[c.n for c in a.citations])
+        return a
+
+    def _verify(self, ctx: _Ctx, res: LLMResult) -> Answer:
         """Verify the model output: abstain / refusal / leak checks, then citations."""
         hits = ctx.hits
         base = dict(question=ctx.question, hits=hits, llm=res, top_dense_score=ctx.top_score,
@@ -139,25 +159,40 @@ class RAG:
         return Answer(answer=text, abstained=False, reason="answered", citations=cites, **base)
 
     # ---- public API -----------------------------------------------------------------------
-    def answer(self, question: str) -> Answer:
-        terminal, ctx = self._prepare(question)
+    def answer(self, question: str, trace: Trace | None = None) -> Answer:
+        trace = trace or NULL_TRACE
+        terminal, ctx = self._prepare(question, trace)
         if terminal:
             return terminal
-        return self._finalize(ctx, self.llm.complete(system=SYSTEM, user=ctx.prompt, model=self.model))
+        with trace.span("llm", model=self.model) as sp:
+            res = self.llm.complete(system=SYSTEM, user=ctx.prompt, model=self.model)
+            sp.set(input_tokens=res.input_tokens, output_tokens=res.output_tokens,
+                   cost_usd=round(res.cost_usd, 6), cached=res.cached, stop_reason=res.stop_reason)
+        return self._finalize(ctx, res, trace)
 
-    def stream(self, question: str):
+    def stream(self, question: str, trace: Trace | None = None):
         """Yield {"event", "data"} dicts: token* then one final Answer.
 
         Tokens are provisional: citations are only verified once generation ends, so the client
         must replace the streamed text with final.answer (it is the abstain message if verification
         fails).
         """
-        terminal, ctx = self._prepare(question)
+        trace = trace or NULL_TRACE
+        terminal, ctx = self._prepare(question, trace)
         if terminal:
             yield {"event": "final", "data": terminal}
             return
         yield {"event": "meta", "data": {"retrieved": len(ctx.hits)}}
-        s = self.llm.stream(system=SYSTEM, user=ctx.prompt, model=self.model)
-        for piece in s:
-            yield {"event": "token", "data": piece}
-        yield {"event": "final", "data": self._finalize(ctx, s.result)}
+        with trace.span("llm", model=self.model, streamed=True) as sp:
+            t0, first, n = time.perf_counter(), None, 0
+            s = self.llm.stream(system=SYSTEM, user=ctx.prompt, model=self.model)
+            for piece in s:
+                if first is None:
+                    first = (time.perf_counter() - t0) * 1000
+                n += 1
+                yield {"event": "token", "data": piece}
+            res = s.result
+            sp.set(first_token_ms=round(first, 1) if first is not None else None, token_events=n,
+                   input_tokens=res.input_tokens, output_tokens=res.output_tokens,
+                   cost_usd=round(res.cost_usd, 6), cached=res.cached, stop_reason=res.stop_reason)
+        yield {"event": "final", "data": self._finalize(ctx, res, trace)}
