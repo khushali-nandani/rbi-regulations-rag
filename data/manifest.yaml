@@ -17,10 +17,32 @@ documents:
   - id: kyc_2016
     title: Master Direction - Know Your Customer (KYC) Direction, 2016 (Updated Aug 14, 2025)
     effective_date: 2016-02-25
-    status: current
+    status: snapshot_pre_consolidation   # PDF is the Aug 14, 2025 update; RBI later issued entity-wise
+                                         # KYC Directions (Nov 28, 2025). Repeal status for each RE type unverified.
     url: https://www.rbi.org.in/commonman/Upload/English/Notification/PDFs/MD18KYCF6E92C82E1E1419D87323E3869BC9F13.pdf
     landing_page: https://www.rbi.org.in/CommonPerson/english/scripts/notification.aspx?id=2607
-  # TODO (find landing pages on rbi.org.in, then add): Fair Practices Code, Outsourcing of
-  # Financial Services, Customer liability in unauthorised electronic transactions,
-  # Credit Card/Debit Card, Integrated Ombudsman Scheme. Note the Nov 28, 2025 consolidation
-  # into entity-wise Master Directions: check each doc's current name before adding.
+  - id: cb_rbc_2025
+    title: Reserve Bank of India (Commercial Banks - Responsible Business Conduct) Directions, 2025 (Updated as on October 1, 2026)
+    effective_date: 2025-11-28
+    status: current
+    note: Consolidates Fair Practices, customer liability in unauthorised electronic transactions, responsible lending conduct.
+    url: https://rbidocs.rbi.org.in/rdocs/notification/PDFs/170MD.PDF
+  - id: nbfc_outsourcing_2025
+    title: Reserve Bank of India (Non-Banking Financial Companies - Managing Risks in Outsourcing) Directions, 2025
+    effective_date: 2025-11-28
+    status: current
+    url: https://rbidocs.rbi.org.in/rdocs/notification/PDFs/363MD40F22B0CDF734E3C884A9CBCE5DF9194.PDF
+  - id: ombudsman_2026
+    title: Reserve Bank - Integrated Ombudsman Scheme, 2026
+    effective_date: 2026-07-01
+    status: current
+    supersedes: ombudsman_2021
+    url: https://rbidocs.rbi.org.in/rdocs/content/pdfs/SCHEME16012026_A.pdf
+  - id: ombudsman_2021
+    title: Reserve Bank - Integrated Ombudsman Scheme, 2021
+    effective_date: 2021-11-12
+    status: repealed   # repealed as on July 1, 2026 by the 2026 Scheme (para 20)
+    superseded_by: ombudsman_2026
+    url: https://rbidocs.rbi.org.in/rdocs/content/pdfs/RBIOS2021_121121.pdf
+  # TODO (URL not found yet): Commercial Banks Credit Cards and Debit Cards Directions 2025;
+  # Cybersecurity, Technology: Risk, Resilience and Assurance Directions 2025.
