@@ -65,5 +65,12 @@ def build_index(collection: str | None = None, header: bool = False, batch: int 
 
 
 if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Build the Qdrant index from the silver Delta table")
+    ap.add_argument("--serving-only", action="store_true",
+                    help="build only the collection the API serves (skip the ablation variant)")
+    args = ap.parse_args()
     print("indexed", build_index(), "chunks (raw)")
-    print("indexed", build_index(settings.collection + "_ctx", header=True), "chunks (ctx header)")
+    if not args.serving_only:
+        print("indexed", build_index(settings.collection + "_ctx", header=True), "chunks (ctx header)")
