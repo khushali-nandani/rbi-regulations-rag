@@ -3,26 +3,25 @@ name = "rbi-rag"
 version = "0.1.0"
 description = "Banking Regulation RAG over public RBI documents: hybrid retrieval, grounded citations, guardrails, evals."
 requires-python = ">=3.12,<3.13"
+# Runtime only: what the API container needs. Heavy build/eval tools live in extras below.
 dependencies = [
-  "pymupdf>=1.24",
-  "qdrant-client>=1.12",
-  "fastembed>=0.4",
-  "sentence-transformers>=3.0",
-  "anthropic>=0.40",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
   "pydantic>=2.9",
   "pydantic-settings>=2.6",
-  "mlflow>=2.17",
-  "pandas>=2.2",
-  "deltalake>=0.22",
-  "httpx>=0.27",
-  "slowapi>=0.1.9",
-  "pyyaml>=6.0.4",
+  "qdrant-client>=1.12",
+  "fastembed>=0.4",
+  "anthropic>=0.40",
 ]
 
+[project.optional-dependencies]
+# Corpus build: PDF parsing, Delta tables, index build.
+pipeline = ["pymupdf>=1.24", "deltalake>=0.22", "pandas>=2.2", "pyarrow>=15", "pyyaml>=6.0.4"]
+# Evaluation harness + experiment tracking.
+eval = ["mlflow>=2.17", "pandas>=2.2"]
+
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.7"]
+dev = ["pytest>=8", "ruff>=0.7", "httpx>=0.27"]
 
 [tool.ruff]
 line-length = 100
