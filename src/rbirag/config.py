@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     judge_model: str = "claude-haiku-5-5"  # cheapest model for judging too (budget is $5)
     max_spend_usd: float = 3.0  # hard stop for cumulative API spend (budget is $5)
     gate_min_dense_score: float = 0.67  # below this the question is out of domain: skip the LLM
-    api_keys: str = "dev-key-1"  # comma-separated
+    api_keys: str = "dev-key-1"  # comma-separated; set real keys via the API_KEYS env var
+    rate_limit_per_min: int = 10  # per API key
 
 
 settings = Settings()
