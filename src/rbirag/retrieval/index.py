@@ -21,10 +21,16 @@ def point_id(chunk_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
 
-def build_index(batch: int = 64) -> int:
+def embed_text(row, header: bool) -> str:
+    """Contextual header: tell the encoders which document/para a chunk belongs to."""
+    return f"{row.doc_title} | para {row.section_no} | {row.text}" if header else row.text
+
+
+def build_index(collection: str | None = None, header: bool = False, batch: int = 64) -> int:
+    collection = collection or settings.collection
     df = DeltaTable(settings.delta_dir / "silver_chunks").to_pandas()
     df = df.sort_values(["doc_id", "page_start", "chunk_id"]).reset_index(drop=True)
-    texts = df["text"].tolist()
+    texts = [embed_text(r, header) for r in df.itertuples()]
 
     cache = str(settings.model_cache)
     dense = TextEmbedding(settings.dense_model, cache_dir=cache)
@@ -34,10 +40,10 @@ def build_index(batch: int = 64) -> int:
 
     settings.qdrant_path.mkdir(parents=True, exist_ok=True)
     client = QdrantClient(path=str(settings.qdrant_path))
-    if client.collection_exists(settings.collection):
-        client.delete_collection(settings.collection)
+    if client.collection_exists(collection):
+        client.delete_collection(collection)
     client.create_collection(
-        settings.collection,
+        collection,
         vectors_config={"dense": models.VectorParams(
             size=len(dense_vecs[0]), distance=models.Distance.COSINE)},
         sparse_vectors_config={"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)},
@@ -53,10 +59,11 @@ def build_index(batch: int = 64) -> int:
         )
         for row, dv, sv in zip(df.itertuples(), dense_vecs, sparse_vecs)
     ]
-    client.upload_points(settings.collection, points, batch_size=batch)
+    client.upload_points(collection, points, batch_size=batch)
     client.close()
     return len(points)
 
 
 if __name__ == "__main__":
-    print("indexed", build_index(), "chunks")
+    print("indexed", build_index(), "chunks (raw)")
+    print("indexed", build_index(settings.collection + "_ctx", header=True), "chunks (ctx header)")

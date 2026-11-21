@@ -36,19 +36,19 @@ class Hit:
 
 
 class Retriever:
-    def __init__(self, qdrant_path=None):
+    def __init__(self, qdrant_path=None, collection: str | None = None):
+        self.collection = collection or settings.collection
         cache = str(settings.model_cache)
         self.client = QdrantClient(path=str(qdrant_path or settings.qdrant_path))
         self.dense = TextEmbedding(settings.dense_model, cache_dir=cache)
         self.sparse = SparseTextEmbedding(settings.sparse_model, cache_dir=cache)
-        self._reranker = None  # loaded lazily: only needed when rerank=True
+        self._rerankers: dict[str, TextCrossEncoder] = {}  # loaded lazily: only if rerank=True
 
-    @property
-    def reranker(self) -> TextCrossEncoder:
-        if self._reranker is None:
-            self._reranker = TextCrossEncoder(settings.rerank_model,
-                                              cache_dir=str(settings.model_cache))
-        return self._reranker
+    def reranker(self, name: str | None = None) -> TextCrossEncoder:
+        name = name or settings.rerank_model
+        if name not in self._rerankers:
+            self._rerankers[name] = TextCrossEncoder(name, cache_dir=str(settings.model_cache))
+        return self._rerankers[name]
 
     # ---- filters -------------------------------------------------------------------------
     @staticmethod
@@ -66,7 +66,7 @@ class Retriever:
         dq = list(self.dense.query_embed(query))[0].tolist()
         sq = list(self.sparse.query_embed(query))[0]
         sparse_q = models.SparseVector(indices=sq.indices.tolist(), values=sq.values.tolist())
-        c, col = self.client, settings.collection
+        c, col = self.client, self.collection
         if mode == "dense":
             return c.query_points(col, query=dq, using="dense", limit=limit,
                                   query_filter=flt, with_payload=True).points
@@ -86,7 +86,7 @@ class Retriever:
 
     # ---- public API ----------------------------------------------------------------------
     def search(self, query: str, *, mode: Mode = "hybrid", k: int = 5, rerank: bool = False,
-               candidates: int = 30, doc_ids: list[str] | None = None,
+               candidates: int = 30, rerank_model: str | None = None, doc_ids: list[str] | None = None,
                exclude_status: list[str] | None = None) -> list[Hit]:
         flt = self._filter(doc_ids, exclude_status)
         points = self._candidates(query, mode, candidates if rerank else k, flt)
@@ -94,7 +94,7 @@ class Retriever:
             "chunk_id", "doc_id", "doc_title", "status", "section_no", "section_title",
             "page_start", "page_end", "text")}, score=float(p.score)) for p in points]
         if rerank and hits:
-            scores = list(self.reranker.rerank(query, [h.text for h in hits]))
+            scores = list(self.reranker(rerank_model).rerank(query, [h.text for h in hits]))
             for h, s in zip(hits, scores):
                 h.meta["first_stage_score"], h.score = h.score, float(s)
             hits.sort(key=lambda h: h.score, reverse=True)
