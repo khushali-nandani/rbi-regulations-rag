@@ -44,7 +44,7 @@ CONFIGS = [
 
 
 def load_questions(types_excluded=("guardrail",)) -> list[dict]:
-    rows = [json.loads(l) for l in GOLDEN.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
     return [r for r in rows if r["answerable"] and r["gold"] and r["type"] not in types_excluded]
 
 
@@ -94,7 +94,7 @@ def run_all(configs=CONFIGS, experiment="retrieval-ablation", track=True) -> pd.
 
     questions = load_questions()
     retriever = Retriever()
-    retriever.search("warm up", rerank=True)  # load models before timing
+    retriever.search("warm up", rerank=any(c.rerank for c in configs))  # load models before timing
     if track:
         mlflow.set_tracking_uri(f"sqlite:///{ROOT / 'mlflow.db'}")
         mlflow.set_experiment(experiment)
