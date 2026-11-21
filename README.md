@@ -2,7 +2,7 @@
 
 Question answering over public **Reserve Bank of India** regulations, built to be **grounded, measured and shippable**: every answer carries page-level citations, the system abstains when the evidence is missing, and every design choice is backed by a number from an eval you can re-run.
 
-> **Live demo:** _coming soon (Hugging Face Spaces)_ · Production-**style** (tested, containerised, observable), not production-at-scale. See [Scope and limitations](#scope-and-limitations).
+> **Run it locally in one command** (`docker run`, see [Run it](#run-it); a demo UI is served at `/`). Not hosted publicly: free hosting tiers were too CPU-starved for the embedding models. Production-**style** (tested, containerised, observable), not production-at-scale. See [Scope and limitations](#scope-and-limitations).
 
 ```text
 Q: What is the shortest cooling-off period a lender can set for a digital loan?
@@ -142,11 +142,11 @@ uv run uvicorn rbirag.api.app:create_app --factory --port 8000
 
 ```bash
 docker build -t rbi-rag .                  # ~283 MB, bakes corpus + index + models
-docker run -p 7860:7860 --env-file .env rbi-rag
+docker run -p 7860:7860 --env-file .env rbi-rag   # then open http://localhost:7860
 ```
 
 ```bash
-uv run pytest                              # 81 tests, no network or API key needed
+uv run pytest                              # 82 tests, no network or API key needed
 uv run python -m rbirag.evals_retrieval    # ablation, free, logs to MLflow (mlflow ui)
 uv run python -m rbirag.evals_generation   # end-to-end eval, ~$0.05 with Haiku
 uv run python evals/check_regression.py    # the CI gate
