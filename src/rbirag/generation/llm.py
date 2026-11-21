@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from ..config import ROOT, settings
 
@@ -115,8 +114,7 @@ class LLM:
                 model=model, max_tokens=max_tokens, system=system,
                 messages=[{"role": "user", "content": user}], output_config={"effort": effort},
             ) as st:
-                for piece in st.text_stream:
-                    yield piece
+                yield from st.text_stream
                 final = st.get_final_message()
             u = final.usage
             in_tok = (u.input_tokens or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0) \

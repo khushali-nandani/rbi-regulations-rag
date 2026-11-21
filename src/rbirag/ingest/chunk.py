@@ -104,7 +104,7 @@ def chunk_document(doc_id: str, pages: list[Page]) -> list[Chunk]:
     out: list[Chunk] = []
     for chapter, no, title, lines in _sections(pages):
         for group in _split(lines):
-            body = " ".join(l for _, l in group)
+            body = " ".join(text for _, text in group)
             if len(body.split()) < MIN_WORDS and out and out[-1].section_no == no:
                 prev = out[-1]  # merge tiny tails into previous chunk of the same section
                 prev.text += " " + body

@@ -14,7 +14,8 @@ from deltalake import DeltaTable
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "evals/golden/questions.jsonl"
-norm = lambda s: re.sub(r"\s+", " ", s).strip()
+def norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def load_chunks():
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true")
     a = ap.parse_args()
-    rows = [json.loads(l) for l in GOLDEN.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
     errs = validate(rows, load_chunks())
     from collections import Counter
     print(f"{len(rows)} questions:", dict(Counter(r["type"] for r in rows)))

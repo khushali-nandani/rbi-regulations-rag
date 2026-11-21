@@ -57,7 +57,7 @@ class Trace:
             if self.enabled:
                 self.spans.append(sp)
 
-    def finish(self, answer=None, error: Exception | None = None) -> "Trace":
+    def finish(self, answer=None, error: Exception | None = None) -> Trace:
         self.total_ms = (time.perf_counter() - self._t0) * 1000
         if error is not None:
             self.error = type(error).__name__
@@ -124,7 +124,9 @@ class TraceStore:
             return {"requests": 0}
         lat = sorted(t["total_ms"] for t in ts)
         outs = [t["outcome"] for t in ts if t["outcome"]]
-        pct = lambda p: lat[min(len(lat) - 1, int(p * len(lat)))]
+        def pct(p: float) -> float:
+            return lat[min(len(lat) - 1, int(p * len(lat)))]
+
         return {
             "requests": len(ts), "errors": sum(1 for t in ts if t["error"]),
             "latency_ms": {"p50": round(statistics.median(lat), 1), "p95": round(pct(0.95), 1),

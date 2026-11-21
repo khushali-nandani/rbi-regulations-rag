@@ -1,7 +1,7 @@
 import pytest
 
 from rbirag.guardrails import check_input, check_output
-from rbirag.guardrails.injection import is_injection, strip_injection
+from rbirag.guardrails.injection import is_injection
 from rbirag.guardrails.pii import luhn_ok, mask_pii
 
 

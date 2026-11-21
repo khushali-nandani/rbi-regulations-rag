@@ -36,7 +36,7 @@ def _upsert(path: Path, df: pd.DataFrame, keys: list[str]) -> dict:
 
 def run(manifest: Path = ROOT / "data/manifest.yaml", out: Path = ROOT / "data/delta") -> dict:
     docs = yaml.safe_load(manifest.read_text())["documents"]
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    now = dt.datetime.now(dt.UTC).isoformat()
     bronze_rows, silver_rows = [], []
     for d in docs:
         pdf = ROOT / "data/raw" / f"{d['id']}.pdf"

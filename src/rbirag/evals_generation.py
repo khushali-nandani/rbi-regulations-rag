@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import re
 import time
-from pathlib import Path
 
 import pandas as pd
 
@@ -99,7 +98,7 @@ def summarise(df: pd.DataFrame) -> dict:
 def main():
     import mlflow
 
-    rows = [json.loads(l) for l in GOLDEN.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
     llm = LLM()
     from .retrieval.search import Retriever
     retriever = Retriever()
