@@ -1,0 +1,28 @@
+# Secrets and local state must never enter the build context
+.env
+.env.*
+!.env.example
+.git
+.github
+.venv
+.cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+.DS_Store
+
+# Rebuilt inside the image
+data/delta
+data/processed
+qdrant_local
+traces
+mlruns
+mlflow.db
+
+# Not needed to serve
+tests
+evals
+scripts
+docs
+docker
