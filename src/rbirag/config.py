@@ -18,8 +18,10 @@ class Settings(BaseSettings):
     rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"  # cross-encoder, ~80 MB
 
     anthropic_api_key: str = ""
-    gen_model: str = "claude-sonnet-5-5"
-    judge_model: str = "claude-haiku-5-5"
+    gen_model: str = "claude-haiku-5-5"  # cheap generator; a weaker model also stresses grounding
+    judge_model: str = "claude-sonnet-5-5"  # stronger, different model family member as judge
+    max_spend_usd: float = 3.0  # hard stop for cumulative API spend (budget is $5)
+    gate_min_dense_score: float = 0.67  # below this the question is out of domain: skip the LLM
     api_keys: str = "dev-key-1"  # comma-separated
 
 
