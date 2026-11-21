@@ -1,0 +1,26 @@
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
+
+    delta_dir: Path = ROOT / "data/delta"
+    qdrant_path: Path = ROOT / "qdrant_local"
+    model_cache: Path = ROOT / ".cache/fastembed"
+    collection: str = "rbi_chunks"
+
+    dense_model: str = "BAAI/bge-small-en-v1.5"  # 384-d, runs on CPU via ONNX
+    sparse_model: str = "Qdrant/bm25"  # lexical (BM25) as sparse vectors, IDF applied by Qdrant
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"  # cross-encoder, ~80 MB
+
+    anthropic_api_key: str = ""
+    gen_model: str = "claude-sonnet-5-5"
+    judge_model: str = "claude-haiku-5-5"
+    api_keys: str = "dev-key-1"  # comma-separated
+
+
+settings = Settings()

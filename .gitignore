@@ -6,3 +6,4 @@ mlruns/
 qdrant_local/
 .DS_Store
 data/delta/
+.cache/
